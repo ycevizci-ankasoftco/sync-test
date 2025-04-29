@@ -1,0 +1,78 @@
+package main
+
+import (
+	"log"
+	"os"
+	"os/exec"
+	"time"
+	"zeynep-test/config"
+	"zeynep-test/gitops"
+	"strings"
+)
+
+func main() {
+	for {
+		// Her döngü başında hedef dizini temizleyip yeniden oluşturuyoruz
+		log.Println("Preparing target directory...")
+		os.RemoveAll(config.TargetPath)
+		err := os.MkdirAll(config.TargetPath, 0755)
+		if err != nil {
+			log.Fatalf("Failed to create target path: %v", err)
+		}
+
+		// Hedef repo'yu klonla
+		log.Println("Cloning target repository...")
+		cmd := exec.Command("git", "clone", config.TargetRepoURL, config.TargetPath)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Fatalf("Git clone failed: %v", err)
+		}
+
+		// path.txt dosyasındaki her URL'yi sırayla işleme
+		for _, url := range config.SourceFileURLs {
+			log.Printf("Downloading file from source URL: %s", url)
+
+			// URL'den dosya adını almak için url'yi parçalarız
+			// Örneğin: https://raw.githubusercontent.com/ylmzzeyneep/zeynep-source/refs/heads/main/Dockerfile -> Dockerfile
+			_, fileName := getFileNameFromURL(url)
+
+			// URL'yi indirme işlemi
+			err := gitops.DownloadFile(url, config.SourcePath)
+			if err != nil {
+				log.Printf("Error downloading file from %s: %v", url, err)
+				continue // Hata varsa bir sonraki URL'yi dene
+			}
+			log.Println("File downloaded successfully.")
+
+			// Dosyayı hedef repoya push etme işlemi
+			err = gitops.PushDownloadedFile(fileName) // Dosya adını parametre olarak gönderiyoruz
+			if err != nil {
+				log.Printf("Error pushing changes for file %s: %v", fileName, err)
+				continue // Hata varsa bir sonraki URL'yi dene
+			}
+
+			// Değişiklik olup olmadığını kontrol et
+			cmd := exec.Command("git", "diff", "--quiet") // --quiet, değişiklik varsa hiç çıktı vermez
+			err = cmd.Run() // Eğer değişiklik varsa, git diff sıfırdan farklı dönecektir
+
+			if err != nil {
+				log.Printf("No changes detected for %s, no push was made.", fileName) // Eğer değişiklik yoksa
+			} else {
+				log.Println("Changes pushed successfully.") // Eğer değişiklik varsa push işlemi başarılı
+			}
+		}
+
+		// Belirtilen aralıkta bekleme
+		log.Println("Waiting for next iteration...")
+		time.Sleep(config.PollInterval)
+	}
+}
+
+// URL'den dosya adı çıkaran yardımcı fonksiyon
+func getFileNameFromURL(url string) (string, string) {
+	// URL'yi '/' ile ayır ve son elemanı (dosya adı) al
+	parts := strings.Split(url, "/")
+	fileName := parts[len(parts)-1]
+	return parts[len(parts)-2], fileName
+}
