@@ -50,3 +50,4 @@ func GetLatestCommitHash(repo *git.Repository) (string, error) {
 	return ref.Hash().String(), nil
 }
 testtest
+test
