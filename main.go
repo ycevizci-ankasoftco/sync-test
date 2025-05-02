@@ -53,6 +53,6 @@ func main() {
 			fmt.Println("No new commits.")
 		}
 
-		time.Sleep(config.PollInterval)
+		time.Sleep(config.PollIntervalll)
 	}
 }
